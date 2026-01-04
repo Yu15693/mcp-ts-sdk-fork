@@ -27,15 +27,22 @@ import * as z from 'zod/v4';
 
 import { InMemoryEventStore } from './inMemoryEventStore.js';
 
+// 检查 OAuth 标志
 // Check for OAuth flag
 const useOAuth = process.argv.includes('--oauth');
 const strictOAuth = process.argv.includes('--oauth-strict');
 
+// 创建共享任务存储用于演示
+// 先忽略
 // Create shared task store for demonstration
 const taskStore = new InMemoryTaskStore();
 
-// Create an MCP server with implementation details
+/**
+ * 创建并配置 MCP 服务器实例
+ * Create an MCP server with implementation details
+ */
 const getServer = () => {
+    // 初始化 MCP 服务器，定义基本信息和能力
     const server = new McpServer(
         {
             name: 'simple-streamable-http-server',
@@ -45,16 +52,17 @@ const getServer = () => {
         },
         {
             capabilities: { logging: {}, tasks: { requests: { tools: { call: {} } } } },
-            taskStore, // Enable task support
+            taskStore, // 启用任务支持 Enable task support
             taskMessageQueue: new InMemoryTaskMessageQueue()
         }
     );
 
+    // 注册一个简单的问候工具
     // Register a simple tool that returns a greeting
     server.registerTool(
         'greet',
         {
-            title: 'Greeting Tool', // Display name for UI
+            title: 'Greeting Tool', // UI 显示名称 Display name for UI
             description: 'A simple greeting tool',
             inputSchema: {
                 name: z.string().describe('Name to greet')
@@ -72,6 +80,7 @@ const getServer = () => {
         }
     );
 
+    // 注册一个带有通知的多重问候工具（带注解）
     // Register a tool that sends multiple greetings with notifications (with annotations)
     server.registerTool(
         'multi-greet',
@@ -81,14 +90,15 @@ const getServer = () => {
                 name: z.string().describe('Name to greet')
             },
             annotations: {
-                title: 'Multiple Greeting Tool',
-                readOnlyHint: true,
-                openWorldHint: false
+                title: 'Multiple Greeting Tool', // UI 上会显示这个名字，而不是 "multi-greet"
+                readOnlyHint: true, // 告诉客户端这个操作是安全的，不会修改服务器状态
+                openWorldHint: false // 提示该工具是否是在“开放世界”上下文中运行。
             }
         },
         async ({ name }, extra): Promise<CallToolResult> => {
             const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+            // 发送调试日志
             await server.sendLoggingMessage(
                 {
                     level: 'debug',
@@ -97,8 +107,9 @@ const getServer = () => {
                 extra.sessionId
             );
 
-            await sleep(1000); // Wait 1 second before first greeting
+            await sleep(1000); // 等待1秒 Wait 1 second before first greeting
 
+            // 发送第一条信息日志
             await server.sendLoggingMessage(
                 {
                     level: 'info',
@@ -107,8 +118,9 @@ const getServer = () => {
                 extra.sessionId
             );
 
-            await sleep(1000); // Wait another second before second greeting
+            await sleep(1000); // 再等待1秒 Wait another second before second greeting
 
+            // 发送第二条信息日志
             await server.sendLoggingMessage(
                 {
                     level: 'info',
@@ -127,6 +139,8 @@ const getServer = () => {
             };
         }
     );
+
+    // 注册一个演示表单诱导（Form Elicitation）的工具
     // Register a tool that demonstrates form elicitation (user input collection with a schema)
     // This creates a closure that captures the server instance
     server.registerTool(
@@ -145,6 +159,7 @@ const getServer = () => {
                 required?: string[];
             };
 
+            // 根据信息类型定义 Schema
             switch (infoType) {
                 case 'contact':
                     message = 'Please provide your contact information';
@@ -232,6 +247,7 @@ const getServer = () => {
             }
 
             try {
+                // 使用 extra 参数发送请求以诱导输入
                 // Use sendRequest through the extra parameter to elicit input
                 const result = await extra.sendRequest(
                     {
@@ -286,11 +302,12 @@ const getServer = () => {
         }
     );
 
+    // 注册一个简单的 Prompt
     // Register a simple prompt with title
     server.registerPrompt(
         'greeting-template',
         {
-            title: 'Greeting Template', // Display name for UI
+            title: 'Greeting Template', // UI 显示名称 Display name for UI
             description: 'A simple greeting prompt template',
             argsSchema: {
                 name: z.string().describe('Name to include in greeting')
@@ -311,6 +328,7 @@ const getServer = () => {
         }
     );
 
+    // 注册一个用于测试可恢复性的工具
     // Register a tool specifically for testing resumability
     server.registerTool(
         'start-notification-stream',
@@ -338,6 +356,7 @@ const getServer = () => {
                 } catch (error) {
                     console.error('Error sending notification:', error);
                 }
+                // 等待指定的间隔
                 // Wait for the specified interval
                 await sleep(interval);
             }
@@ -353,12 +372,13 @@ const getServer = () => {
         }
     );
 
+    // 创建一个固定 URI 的简单资源
     // Create a simple resource at a fixed URI
     server.registerResource(
         'greeting-resource',
         'https://example.com/greetings/default',
         {
-            title: 'Default Greeting', // Display name for UI
+            title: 'Default Greeting', // UI 显示名称 Display name for UI
             description: 'A simple greeting resource',
             mimeType: 'text/plain'
         },
@@ -374,6 +394,7 @@ const getServer = () => {
         }
     );
 
+    // 创建用于演示 ResourceLink 的额外资源
     // Create additional resources for ResourceLink demonstration
     server.registerResource(
         'example-file-1',
@@ -415,6 +436,7 @@ const getServer = () => {
         }
     );
 
+    // 注册一个返回 ResourceLink 的工具
     // Register a tool that returns ResourceLinks
     server.registerTool(
         'list-files',
@@ -466,6 +488,7 @@ const getServer = () => {
         }
     );
 
+    // 注册一个演示任务执行的长运行工具
     // Register a long-running tool that demonstrates task execution
     // Using the experimental tasks API - WARNING: may change without notice
     server.experimental.tasks.registerToolTask(
@@ -479,11 +502,13 @@ const getServer = () => {
         },
         {
             async createTask({ duration }, { taskStore, taskRequestedTtl }) {
+                // 创建任务
                 // Create the task
                 const task = await taskStore.createTask({
                     ttl: taskRequestedTtl
                 });
 
+                // 模拟带外工作
                 // Simulate out-of-band work
                 (async () => {
                     await new Promise(resolve => setTimeout(resolve, duration));
@@ -497,6 +522,7 @@ const getServer = () => {
                     });
                 })();
 
+                // 返回包含已创建任务的 CreateTaskResult
                 // Return CreateTaskResult with the created task
                 return {
                     task
@@ -520,9 +546,11 @@ const AUTH_PORT = process.env.MCP_AUTH_PORT ? parseInt(process.env.MCP_AUTH_PORT
 
 const app = createMcpExpressApp();
 
+// 设置 OAuth（如果启用）
 // Set up OAuth if enabled
 let authMiddleware = null;
 if (useOAuth) {
+    // 创建 MCP 端点的认证中间件
     // Create auth middleware for MCP endpoints
     const mcpServerUrl = new URL(`http://localhost:${MCP_PORT}/mcp`);
     const authServerUrl = new URL(`http://localhost:${AUTH_PORT}`);
@@ -563,6 +591,7 @@ if (useOAuth) {
                 }
             }
 
+            // 转换为 AuthInfo 格式
             // Convert the response to AuthInfo format
             return {
                 token,
@@ -572,6 +601,7 @@ if (useOAuth) {
             };
         }
     };
+    // 添加元数据路由到主 MCP 服务器
     // Add metadata routes to the main MCP server
     app.use(
         mcpAuthMetadataRouter({
@@ -589,10 +619,14 @@ if (useOAuth) {
     });
 }
 
+// 存储 Session ID 对应的 Transport
 // Map to store transports by session ID
 const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
-// MCP POST endpoint with optional auth
+/**
+ * MCP POST 处理器：处理初始化和消息发送
+ * MCP POST endpoint with optional auth
+ */
 const mcpPostHandler = async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     if (sessionId) {
@@ -607,15 +641,18 @@ const mcpPostHandler = async (req: Request, res: Response) => {
     try {
         let transport: StreamableHTTPServerTransport;
         if (sessionId && transports[sessionId]) {
+            // 复用现有 Transport
             // Reuse existing transport
             transport = transports[sessionId];
         } else if (!sessionId && isInitializeRequest(req.body)) {
+            // 新的初始化请求
             // New initialization request
             const eventStore = new InMemoryEventStore();
             transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: () => randomUUID(),
-                eventStore, // Enable resumability
+                eventStore, // 启用可恢复性 Enable resumability
                 onsessioninitialized: sessionId => {
+                    // 当会话初始化时存储 Transport
                     // Store the transport by session ID when session is initialized
                     // This avoids race conditions where requests might come in before the session is stored
                     console.log(`Session initialized with ID: ${sessionId}`);
@@ -623,6 +660,7 @@ const mcpPostHandler = async (req: Request, res: Response) => {
                 }
             });
 
+            // 设置关闭处理程序以清理 Transport
             // Set up onclose handler to clean up transport when closed
             transport.onclose = () => {
                 const sid = transport.sessionId;
@@ -632,14 +670,16 @@ const mcpPostHandler = async (req: Request, res: Response) => {
                 }
             };
 
+            // 在处理请求之前将 Transport 连接到 MCP 服务器
             // Connect the transport to the MCP server BEFORE handling the request
             // so responses can flow back through the same transport
             const server = getServer();
             await server.connect(transport);
 
             await transport.handleRequest(req, res, req.body);
-            return; // Already handled
+            return; // 已经处理 Already handled
         } else {
+            // 无效请求 - 没有会话 ID 或不是初始化请求
             // Invalid request - no session ID or not initialization request
             res.status(400).json({
                 jsonrpc: '2.0',
@@ -652,6 +692,7 @@ const mcpPostHandler = async (req: Request, res: Response) => {
             return;
         }
 
+        // 使用现有 Transport 处理请求 - 无需重新连接
         // Handle the request with existing transport - no need to reconnect
         // The existing transport is already connected to the server
         await transport.handleRequest(req, res, req.body);
@@ -670,6 +711,7 @@ const mcpPostHandler = async (req: Request, res: Response) => {
     }
 };
 
+// 设置路由（带条件认证中间件）
 // Set up routes with conditional auth middleware
 if (useOAuth && authMiddleware) {
     app.post('/mcp', authMiddleware, mcpPostHandler);
@@ -677,7 +719,10 @@ if (useOAuth && authMiddleware) {
     app.post('/mcp', mcpPostHandler);
 }
 
-// Handle GET requests for SSE streams (using built-in support from StreamableHTTP)
+/**
+ * MCP GET 处理器：处理 SSE 流连接
+ * Handle GET requests for SSE streams (using built-in support from StreamableHTTP)
+ */
 const mcpGetHandler = async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     if (!sessionId || !transports[sessionId]) {
@@ -689,6 +734,7 @@ const mcpGetHandler = async (req: Request, res: Response) => {
         console.log('Authenticated SSE connection from user:', req.auth);
     }
 
+    // 检查 Last-Event-ID 头以支持可恢复性
     // Check for Last-Event-ID header for resumability
     const lastEventId = req.headers['last-event-id'] as string | undefined;
     if (lastEventId) {
@@ -701,6 +747,7 @@ const mcpGetHandler = async (req: Request, res: Response) => {
     await transport.handleRequest(req, res);
 };
 
+// 设置 GET 路由（带条件认证中间件）
 // Set up GET route with conditional auth middleware
 if (useOAuth && authMiddleware) {
     app.get('/mcp', authMiddleware, mcpGetHandler);
@@ -708,7 +755,10 @@ if (useOAuth && authMiddleware) {
     app.get('/mcp', mcpGetHandler);
 }
 
-// Handle DELETE requests for session termination (according to MCP spec)
+/**
+ * MCP DELETE 处理器：处理会话终止
+ * Handle DELETE requests for session termination (according to MCP spec)
+ */
 const mcpDeleteHandler = async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     if (!sessionId || !transports[sessionId]) {
@@ -729,6 +779,7 @@ const mcpDeleteHandler = async (req: Request, res: Response) => {
     }
 };
 
+// 设置 DELETE 路由（带条件认证中间件）
 // Set up DELETE route with conditional auth middleware
 if (useOAuth && authMiddleware) {
     app.delete('/mcp', authMiddleware, mcpDeleteHandler);
@@ -736,6 +787,7 @@ if (useOAuth && authMiddleware) {
     app.delete('/mcp', mcpDeleteHandler);
 }
 
+// 启动服务器
 app.listen(MCP_PORT, error => {
     if (error) {
         console.error('Failed to start server:', error);
@@ -744,10 +796,12 @@ app.listen(MCP_PORT, error => {
     console.log(`MCP Streamable HTTP Server listening on port ${MCP_PORT}`);
 });
 
+// 处理服务器关闭
 // Handle server shutdown
 process.on('SIGINT', async () => {
     console.log('Shutting down server...');
 
+    // 关闭所有活跃的 Transport 以正确清理资源
     // Close all active transports to properly clean up resources
     for (const sessionId in transports) {
         try {

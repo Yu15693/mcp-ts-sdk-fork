@@ -28,15 +28,18 @@ import {
 } from '@modelcontextprotocol/client';
 import { Ajv } from 'ajv';
 
+// 创建 readline 接口用于用户输入
 // Create readline interface for user input
 const readline = createInterface({
     input: process.stdin,
     output: process.stdout
 });
 
+// 跟踪收到的通知，用于调试可恢复性
 // Track received notifications for debugging resumability
 let notificationCount = 0;
 
+// 全局客户端和传输对象，用于交互式命令
 // Global client and transport for interactive commands
 let client: Client | null = null;
 let transport: StreamableHTTPClientTransport | null = null;
@@ -44,18 +47,26 @@ let serverUrl = 'http://localhost:3000/mcp';
 let notificationsToolLastEventId: string | undefined = undefined;
 let sessionId: string | undefined = undefined;
 
+/**
+ * 主入口函数
+ */
 async function main(): Promise<void> {
     console.log('MCP Interactive Client');
     console.log('=====================');
 
+    // 立即使用默认设置连接到服务器
     // Connect to server immediately with default settings
     await connect();
 
+    // 打印帮助信息并开始命令循环
     // Print help and start the command loop
     printHelp();
     commandLoop();
 }
 
+/**
+ * 打印可用命令的帮助信息
+ */
 function printHelp(): void {
     console.log('\nAvailable commands:');
     console.log('  connect [url]              - Connect to MCP server (default: http://localhost:3000/mcp)');
@@ -78,6 +89,9 @@ function printHelp(): void {
     console.log('  quit                       - Exit the program');
 }
 
+/**
+ * 命令行交互循环，处理用户输入
+ */
 function commandLoop(): void {
     readline.question('\n> ', async input => {
         const args = input.trim().split(/\s+/);
@@ -217,11 +231,16 @@ function commandLoop(): void {
             console.error(`Error executing command: ${error}`);
         }
 
+        // 继续命令循环
         // Continue the command loop
         commandLoop();
     });
 }
 
+/**
+ * 连接到 MCP 服务器
+ * Connect to MCP server
+ */
 async function connect(url?: string): Promise<void> {
     if (client) {
         console.log('Already connected. Disconnect first.');
@@ -235,6 +254,7 @@ async function connect(url?: string): Promise<void> {
     console.log(`Connecting to ${serverUrl}...`);
 
     try {
+        // 创建支持表单诱导（elicitation）的新客户端
         // Create a new client with form elicitation capability
         client = new Client(
             {
@@ -253,6 +273,7 @@ async function connect(url?: string): Promise<void> {
             console.error('\x1b[31mClient error:', error, '\x1b[0m');
         };
 
+        // 设置诱导请求处理器，包含适当的验证逻辑
         // Set up elicitation request handler with proper validation
         client.setRequestHandler(ElicitRequestSchema, async request => {
             if (request.params.mode !== 'form') {
@@ -268,6 +289,7 @@ async function connect(url?: string): Promise<void> {
             const properties = schema.properties;
             const required = schema.required || [];
 
+            // 为请求的 schema 设置 AJV 验证器
             // Set up AJV validator for the requested schema
             const ajv = new Ajv();
             const validate = ajv.compile(schema);
@@ -282,6 +304,7 @@ async function connect(url?: string): Promise<void> {
                 const content: Record<string, unknown> = {};
                 let inputCancelled = false;
 
+                // 收集每个字段的输入
                 // Collect input for each field
                 for (const [fieldName, fieldSchema] of Object.entries(properties)) {
                     const field = fieldSchema as {
@@ -300,6 +323,7 @@ async function connect(url?: string): Promise<void> {
                     const isRequired = required.includes(fieldName);
                     let prompt = `${field.title || fieldName}`;
 
+                    // 添加有用的提示信息
                     // Add helpful information to the prompt
                     if (field.description) {
                         prompt += ` (${field.description})`;
@@ -334,22 +358,26 @@ async function connect(url?: string): Promise<void> {
                         });
                     });
 
+                    // 检查是否取消
                     // Check for cancellation
                     if (answer.toLowerCase() === 'cancel' || answer.toLowerCase() === 'c') {
                         inputCancelled = true;
                         break;
                     }
 
+                    // 解析并验证输入
                     // Parse and validate the input
                     try {
                         if (answer === '' && field.default !== undefined) {
                             content[fieldName] = field.default;
                         } else if (answer === '' && !isRequired) {
+                            // 跳过可选的空字段
                             // Skip optional empty fields
                             continue;
                         } else if (answer === '') {
                             throw new Error(`${fieldName} is required`);
                         } else {
+                            // 根据类型解析值
                             // Parse the value based on type
                             let parsedValue: unknown;
 
@@ -378,6 +406,7 @@ async function connect(url?: string): Promise<void> {
                         }
                     } catch (error) {
                         console.log(`❌ Error: ${error}`);
+                        // 继续下一次尝试
                         // Continue to next attempt
                         break;
                     }
@@ -387,6 +416,7 @@ async function connect(url?: string): Promise<void> {
                     return { action: 'cancel' };
                 }
 
+                // 如果因为错误没有完成所有必填字段，重试
                 // If we didn't complete all fields due to an error, try again
                 if (
                     Object.keys(content).length !==
@@ -401,6 +431,7 @@ async function connect(url?: string): Promise<void> {
                     }
                 }
 
+                // 根据 schema 验证完整的对象
                 // Validate the complete object against the schema
                 const isValid = validate(content);
 
@@ -419,6 +450,7 @@ async function connect(url?: string): Promise<void> {
                     }
                 }
 
+                // 显示收集到的数据并请求确认
                 // Show the collected data and ask for confirmation
                 console.log('\n✅ Collected data:');
                 console.log(JSON.stringify(content, null, 2));
@@ -450,18 +482,22 @@ async function connect(url?: string): Promise<void> {
             return { action: 'decline' };
         });
 
+        // 初始化 HTTP 客户端 Transport
         transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
             sessionId: sessionId
         });
 
+        // 设置通知处理器（处理日志消息）
         // Set up notification handlers
         client.setNotificationHandler(LoggingMessageNotificationSchema, notification => {
             notificationCount++;
             console.log(`\nNotification #${notificationCount}: ${notification.params.level} - ${notification.params.data}`);
+            // 重新显示提示符
             // Re-display the prompt
             process.stdout.write('> ');
         });
 
+        // 设置资源列表变更通知处理器
         client.setNotificationHandler(ResourceListChangedNotificationSchema, async _ => {
             console.log(`\nResource list changed notification received!`);
             try {
@@ -480,10 +516,12 @@ async function connect(url?: string): Promise<void> {
             } catch {
                 console.log('Failed to list resources after change notification');
             }
+            // 重新显示提示符
             // Re-display the prompt
             process.stdout.write('> ');
         });
 
+        // 连接客户端
         // Connect the client
         await client.connect(transport);
         sessionId = transport.sessionId;
@@ -496,6 +534,10 @@ async function connect(url?: string): Promise<void> {
     }
 }
 
+/**
+ * 断开与服务器的连接
+ * Disconnect from server
+ */
 async function disconnect(): Promise<void> {
     if (!client || !transport) {
         console.log('Not connected.');
@@ -512,6 +554,10 @@ async function disconnect(): Promise<void> {
     }
 }
 
+/**
+ * 终止当前会话
+ * Terminate the current session
+ */
 async function terminateSession(): Promise<void> {
     if (!client || !transport) {
         console.log('Not connected.');
@@ -523,11 +569,13 @@ async function terminateSession(): Promise<void> {
         await transport.terminateSession();
         console.log('Session terminated successfully');
 
+        // 检查终止后 sessionId 是否已清除
         // Check if sessionId was cleared after termination
         if (!transport.sessionId) {
             console.log('Session ID has been cleared');
             sessionId = undefined;
 
+            // 同时关闭 transport 并清除 client 对象
             // Also close the transport and clear client objects
             await transport.close();
             console.log('Transport closed after session termination');
@@ -542,6 +590,10 @@ async function terminateSession(): Promise<void> {
     }
 }
 
+/**
+ * 重新连接服务器
+ * Reconnect to the server
+ */
 async function reconnect(): Promise<void> {
     if (client) {
         await disconnect();
@@ -549,6 +601,10 @@ async function reconnect(): Promise<void> {
     await connect();
 }
 
+/**
+ * 列出可用工具
+ * List available tools
+ */
 async function listTools(): Promise<void> {
     if (!client) {
         console.log('Not connected to server.');
@@ -575,6 +631,10 @@ async function listTools(): Promise<void> {
     }
 }
 
+/**
+ * 调用工具
+ * Call a tool with optional JSON arguments
+ */
 async function callTool(name: string, args: Record<string, unknown>): Promise<void> {
     if (!client) {
         console.log('Not connected to server.');
@@ -621,6 +681,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<vo
             }
         });
 
+        // 提示可以读取资源链接
         // Offer to read resource links
         if (resourceLinks.length > 0) {
             console.log(`\nFound ${resourceLinks.length} resource link(s). Use 'read-resource <uri>' to read their content.`);
@@ -649,6 +710,10 @@ async function startNotifications(interval: number, count: number): Promise<void
     await callTool('start-notification-stream', { interval, count });
 }
 
+/**
+ * 调用通知工具并测试可恢复性
+ * Run notification tool with resumability
+ */
 async function runNotificationsToolWithResumability(interval: number, count: number): Promise<void> {
     if (!client) {
         console.log('Not connected to server.');
@@ -672,6 +737,7 @@ async function runNotificationsToolWithResumability(interval: number, count: num
             console.log(`Updated resumption token: ${event}`);
         };
 
+        // 发送请求时传入 resumptionToken 和回调，以支持断点续传
         const result = await client.request(request, CallToolResultSchema, {
             resumptionToken: notificationsToolLastEventId,
             onresumptiontoken: onLastEventIdUpdate
@@ -690,6 +756,10 @@ async function runNotificationsToolWithResumability(interval: number, count: num
     }
 }
 
+/**
+ * 列出所有 Prompt
+ * List available prompts
+ */
 async function listPrompts(): Promise<void> {
     if (!client) {
         console.log('Not connected to server.');
@@ -715,6 +785,10 @@ async function listPrompts(): Promise<void> {
     }
 }
 
+/**
+ * 获取特定 Prompt
+ * Get a prompt with optional JSON arguments
+ */
 async function getPrompt(name: string, args: Record<string, unknown>): Promise<void> {
     if (!client) {
         console.log('Not connected to server.');
@@ -740,6 +814,10 @@ async function getPrompt(name: string, args: Record<string, unknown>): Promise<v
     }
 }
 
+/**
+ * 列出所有资源
+ * List available resources
+ */
 async function listResources(): Promise<void> {
     if (!client) {
         console.log('Not connected to server.');
@@ -766,6 +844,10 @@ async function listResources(): Promise<void> {
     }
 }
 
+/**
+ * 读取特定资源
+ * Read a specific resource by URI
+ */
 async function readResource(uri: string): Promise<void> {
     if (!client) {
         console.log('Not connected to server.');
@@ -807,6 +889,10 @@ async function readResource(uri: string): Promise<void> {
     }
 }
 
+/**
+ * 调用工具并使用基于任务的执行模式
+ * Call a tool with task-based execution
+ */
 async function callToolTask(name: string, args: Record<string, unknown>): Promise<void> {
     if (!client) {
         console.log('Not connected to server.');
@@ -816,11 +902,13 @@ async function callToolTask(name: string, args: Record<string, unknown>): Promis
     console.log(`Calling tool '${name}' with task-based execution...`);
     console.log('Arguments:', args);
 
+    // 使用基于任务的执行 - 立即调用，稍后获取
     // Use task-based execution - call now, fetch later
     // Using the experimental tasks API - WARNING: may change without notice
     console.log('This will return immediately while processing continues in the background...');
 
     try {
+        // 使用流式 API 调用工具并获取任务元数据
         // Call the tool with task metadata using streaming API
         const stream = client.experimental.tasks.callToolStream(
             {
@@ -830,7 +918,7 @@ async function callToolTask(name: string, args: Record<string, unknown>): Promis
             CallToolResultSchema,
             {
                 task: {
-                    ttl: 60000 // Keep results for 60 seconds
+                    ttl: 60000 // 结果保留 60 秒 Keep results for 60 seconds
                 }
             }
         );
@@ -867,9 +955,14 @@ async function callToolTask(name: string, args: Record<string, unknown>): Promis
     }
 }
 
+/**
+ * 清理资源并退出
+ * Cleanup resources and exit
+ */
 async function cleanup(): Promise<void> {
     if (client && transport) {
         try {
+            // 尝试优雅地终止会话
             // First try to terminate the session gracefully
             if (transport.sessionId) {
                 try {
@@ -881,6 +974,7 @@ async function cleanup(): Promise<void> {
                 }
             }
 
+            // 然后关闭 transport
             // Then close the transport
             await transport.close();
         } catch (error) {
@@ -894,13 +988,16 @@ async function cleanup(): Promise<void> {
     process.exit(0);
 }
 
+// 设置原始模式以捕获 Escape 键
 // Set up raw mode for keyboard input to capture Escape key
 process.stdin.setRawMode(true);
 process.stdin.on('data', async data => {
+    // 检查 Escape 键 (27)
     // Check for Escape key (27)
     if (data.length === 1 && data[0] === 27) {
         console.log('\nESC key pressed. Disconnecting from server...');
 
+        // 中止当前操作并断开与服务器的连接
         // Abort current operation and disconnect from server
         if (client && transport) {
             await disconnect();
@@ -909,17 +1006,20 @@ process.stdin.on('data', async data => {
             console.log('Not connected to server.');
         }
 
+        // 重新显示提示符
         // Re-display the prompt
         process.stdout.write('> ');
     }
 });
 
+// 处理 Ctrl+C
 // Handle Ctrl+C
 process.on('SIGINT', async () => {
     console.log('\nReceived SIGINT. Cleaning up...');
     await cleanup();
 });
 
+// 启动交互式客户端
 // Start the interactive client
 main().catch((error: unknown) => {
     console.error('Error running MCP client:', error);
