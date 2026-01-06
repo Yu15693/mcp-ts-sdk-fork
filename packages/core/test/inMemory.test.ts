@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeEach } from 'vitest';
 import type { AuthInfo, JSONRPCMessage } from '../src/types/types.js';
 import { InMemoryTransport } from '../src/util/inMemory.js';
 
