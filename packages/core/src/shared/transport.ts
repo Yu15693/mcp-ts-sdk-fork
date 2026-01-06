@@ -70,59 +70,75 @@ export type TransportSendOptions = {
 };
 /**
  * Describes the minimal contract for an MCP transport that a client or server can communicate over.
+ * 描述了客户端或服务器可以通过其进行通信的 MCP 传输层的最小契约。
  */
 export interface Transport {
     /**
      * Starts processing messages on the transport, including any connection steps that might need to be taken.
+     * 开始处理传输层上的消息，包括可能需要执行的任何连接步骤。
      *
      * This method should only be called after callbacks are installed, or else messages may be lost.
+     * 此方法应仅在安装回调后调用，否则可能会丢失消息。
      *
      * NOTE: This method should not be called explicitly when using Client, Server, or Protocol classes, as they will implicitly call start().
+     * 注意：在使用 Client、Server 或 Protocol 类时，不应显式调用此方法，因为它们会隐式调用 start()。
      */
     start(): Promise<void>;
 
     /**
      * Sends a JSON-RPC message (request or response).
+     * 发送 JSON-RPC 消息（请求或响应）。
      *
      * If present, `relatedRequestId` is used to indicate to the transport which incoming request to associate this outgoing message with.
+     * 如果存在 `relatedRequestId`，则用于向传输层指示此传出消息与哪个传入请求相关联。
      */
     send(message: JSONRPCMessage, options?: TransportSendOptions): Promise<void>;
 
     /**
      * Closes the connection.
+     * 关闭连接。
      */
     close(): Promise<void>;
 
     /**
      * Callback for when the connection is closed for any reason.
+     * 当连接因任何原因关闭时的回调。
      *
      * This should be invoked when close() is called as well.
+     * 当调用 close() 时也应调用此方法。
      */
     onclose?: () => void;
 
     /**
      * Callback for when an error occurs.
+     * 当发生错误时的回调。
      *
      * Note that errors are not necessarily fatal; they are used for reporting any kind of exceptional condition out of band.
+     * 请注意，错误不一定是致命的；它们用于报告带外的任何类型的异常情况。
      */
     onerror?: (error: Error) => void;
 
     /**
      * Callback for when a message (request or response) is received over the connection.
+     * 当通过连接接收到消息（请求或响应）时的回调。
      *
      * Includes the requestInfo and authInfo if the transport is authenticated.
+     * 如果传输层已通过身份验证，则包括 requestInfo 和 authInfo。
      *
      * The requestInfo can be used to get the original request information (headers, etc.)
+     * requestInfo 可用于获取原始请求信息（标头等）
      */
     onmessage?: <T extends JSONRPCMessage>(message: T, extra?: MessageExtraInfo) => void;
 
     /**
      * The session ID generated for this connection.
+     * 为此连接生成的会话 ID。
      */
     sessionId?: string;
 
     /**
      * Sets the protocol version used for the connection (called when the initialize response is received).
+     * 设置用于连接的协议版本（在收到初始化响应时调用）。
      */
     setProtocolVersion?: (version: string) => void;
 }
